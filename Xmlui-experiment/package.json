@@ -1,0 +1,30 @@
+{
+  "name": "xmlui-supabase-tasks",
+  "version": "1.0.0",
+  "description": "XMLUI application using supabase. The application uses a middleware proxy server auth.js to handle authentication and API calls.",
+  "scripts": {
+    "dev": "npx -y http-server -o",
+    "clear-tokens": "node -e \"const fs = require('fs'); const path = require('path'); const os = require('os'); const tokenFile = path.join(os.homedir(), '.xmlui-books-tokens.json'); if (fs.existsSync(tokenFile)) { fs.unlinkSync(tokenFile); console.log('Tokens cleared successfully'); } else { console.log('No token file found'); }\"",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ketiab/Xmlui-supabase-tasks.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/ketiab/Xmlui-supabase-tasks/issues"
+  },
+  "homepage": "https://github.com/ketiab/Xmlui-supabase-tasksnpn#readme",
+  "dependencies": {
+    "axios": "^1.12.2",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "multer": "^2.0.2"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1"
+  }
+}

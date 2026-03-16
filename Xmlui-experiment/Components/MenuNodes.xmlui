@@ -1,0 +1,38 @@
+﻿<Component name="MenuNodes"
+ 
+var.selectedAccountId = ''
+var.searchTerm = ''>
+
+<!--
+<DataSource
+  id="menuNodesDs"
+  url="http://localhost:3000/erp/api/v0/menu-nodes"
+  headers="{{ Accept: 'application/json' }}"
+/>-->
+hello
+<!-- List all accounts -->
+<DataSource
+  id="accountsDs"
+  url="http://localhost:3000/erp/api/v0/accounts/"
+  headers="{{ Accept: 'application/json' }}"
+/>
+<Text value="{accountsDs.loaded}"/>
+<Text value="{JSON.stringify(accountsDs.value)}"/>
+
+<!-- List accounts filtered by label -->
+<DataSource
+  id="accountsFilteredDs"
+  url="http://localhost:3000/erp/api/v0/accounts/"
+  queryParams="{{ label: searchTerm }}"
+  headers="{{ Accept: 'application/json' }}"
+  when="{searchTerm}"
+/>
+
+<!-- Get single account by id -->
+<DataSource
+  id="accountDs"
+  url="http://localhost:3000/erp/api/v0/accounts/{selectedAccountId}"
+  headers="{{ Accept: 'application/json' }}"
+  when="{selectedAccountId}"
+/>
+</Component>

@@ -1,0 +1,29 @@
+<Fragment 
+global.appauth="authenticated"
+
+global.appAuthenticated='false'
+global.appToken=''
+global.appUserId=''
+global.appEmail=''
+global.appLoading='true'
+global.appStep=''
+global.appSearch=''
+global.appScope='customers'
+global.appCompanyId='12345'
+global.appCompanyName=''
+
+global.taxFilter='all'
+global.taxSelection='[]'
+global.taxAction=''
+
+global.custFilter='all'
+global.custSelection='[]'
+global.custAction=''>
+  <!-- This reproduces the bug: 
+       Main → TestWrapper (with App) → Test component
+       
+       The 'mode' prop goes through the wrapper, 
+       and var.mode="{$props.mode}" doesn't work properly
+  -->
+  <LedgerSMB />
+</Fragment>

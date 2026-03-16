@@ -66,3 +66,7 @@ META.yml
 /.cache
 /.config
 /.npm
+
+# Local XMLUI experiment artifacts
+/Xmlui-experiment/passwords.txt
+/Xmlui-experiment/xmlui-test-server-windows-amd64.exe

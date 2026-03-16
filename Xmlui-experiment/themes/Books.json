@@ -1,0 +1,79 @@
+{
+  "name": "Xmlui-supabase-tasks",
+  "id": "books",
+  "themeVars": {
+    "--- App-bound root theme variables": "",
+    "maxWidth-content": "100%",
+    "width-navPanel-App": "200px",
+    
+    "--nav panel theme variables": "",
+    
+    "color-primary": "hsl(205, 76%, 58%)",
+    "color-secondary": "$color-secondary-700",
+    "color-surface": "$color-surface-950",
+
+    "borderRadius-Avatar": "50%",
+
+    "paddingVertical-Select": "$space-0",
+    "width-searchBox-AppHeader": "600px",
+    "height-searchBox-AppHeader": "35px",
+    "font-family-base": "'Inter', sans-serif",
+    "fontWeight": "fontWeight-normal",
+
+     "--- Form theme variables": "",
+     "width-label-Form": "130px",
+     "width-Form-Item": "50%",
+     "width-Form-Item-s": "40%",
+     "position-label-Form": "start",
+     "width-text-of-Form": "50%",
+
+     "---table theme variables": "",
+     "width-Table-ActionMenu": "$space-52",
+     "width-Table-Action-column": "70px",
+     "padding-card-Table": "$space-4",
+     "gap-card-Table": "$space-4",
+     "width-Table-Checkbox-column": "50px",
+
+     "---Buttons when table rows are selected": "",
+     "padding-Button-TableRowSelected": "16px",
+     "gap-Button-TableRowSelected": "16px",
+
+     "--- Badge theme variables": "",
+     "backgroundColor-Badge-Active": "hsl(145, 63%, 40%)",
+     "backgroundColor-Badge-Pending": "hsl(39, 100%, 50%)",
+     "backgroundColor-Badge-Inactive": "hsl(0, 0%, 50%)",
+     
+     "---text notes theme variables": "",
+     "color-TextNotes-Info": "hsl(205, 100%, 68%)",
+     "size-TextNotes-Info": "12px",
+
+     "---dropdown theme variables": "",
+      "height-Dropdown-Item": "230px",
+      "width-Dropdown-Item": "25%",
+
+      "--card display results theme variables": "",
+      "padding-CardDisplayResults": "$space-4",
+      "gap-CardDisplayResults": "$space-2",
+      "backgroundColor-CardDisplayResults": "$color-surface-100",
+      "gap-title-Card": "$space-8",
+
+      "--form tabs theme variables": "",
+      "vstack-gap-FormTabs": "$space-3",
+
+      
+      "backgroundColor-ProgressBar": "orange",
+      "color-indicator-ProgressBar": "blue",
+
+      "backgroundColor-FileUploadDropZone": "$color-primary-50",
+      "backgroundColor-ExpandableItem": "$color-primary-50",
+     
+      "verticalAlignment-Text-small": "center",
+
+      "color-MenuItem--disabled": "$color-primary-400",
+
+     "---Vstack theme variables": ""
+     
+     
+
+  }
+}

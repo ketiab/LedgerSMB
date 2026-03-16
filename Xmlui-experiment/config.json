@@ -1,0 +1,17 @@
+{
+  "appGlobals": {
+    "supabaseUrl": "https://dzirtfvyvvxiftbyjynw.supabase.co",
+    "supabasePublishableKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR6aXJ0ZnZ5dnZ4aWZ0YnlqeW53Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk0MDg2MTEsImV4cCI6MjA4NDk4NDYxMX0.v4VP9um8liVDR2m5Aojtus8dxWz4G5qskbU__DNLDj0",
+    "apiUrl": "http://localhost:8080",
+    "ledgersmbUrl": "http://localhost"
+  },
+  
+  "themes": [
+    "Themes/Books.json"
+  ],
+  
+  "resources": {
+    "icon.cart": "resources/cart.svg"
+  }
+
+}

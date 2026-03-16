@@ -1,0 +1,115 @@
+<Component name="LedgerSMB" >
+<App
+  name="LedgerSMB"
+  layout="vertical-sticky"  
+  logo="resources/xmlui-logo.svg" 
+   >
+    <AppHeader>
+    <TextBox
+        placeholder="Search by label..."
+        value="{searchTerm}"
+        onDidChange="(val) => searchTerm = val"
+        width="400px"
+      />
+      </AppHeader>
+
+  <property name="profileMenuTemplate">
+        <Text>Demo User</Text>
+  </property>
+
+
+
+<DataSource
+  id="menuNodesDs"
+  url="http://localhost:3000/erp/api/v0/menu-nodes"
+  headers="{{ Accept: 'application/json' }}"
+/>
+
+  
+<!--
+<DataSource id="getLinks" mockData="{links}" method="get"/>
+  <NavPanel>
+    <Items data="{getLinks}">
+      <NavLink to="/link/{$item.id}" label="Item {$item.id}"/>
+    </Items>
+  </NavPanel>
+  <Pages>
+    <Page url="/">
+      <Button onClick="links.push({ id: links.length + 1 })">Add Link</Button>
+      <Button onClick="links.pop()">Remove Link</Button>
+    </Page>
+    <Page url="/link/:id">
+      <h1>Link {$routeParams.id}</h1>
+    </Page>
+  </Pages>-->
+
+    
+ 
+   <NavPanel>
+      <NavLink label="Dashboard" to="/"/>
+      <NavLink label="Accounts" to="/accounts"/>
+      <Items data="{(menuNodesDs.value || []).filter(n => n.parent === 0 && n.menu)}">
+        <NavGroup label="{$item.label}">
+          <Items data="{(menuNodesDs.value || []).filter(n => n.parent === $item.id && !n.menu)}">
+            <NavLink label="{$item.label}" to="{$item.url}"/>
+          </Items>
+          <Items data="{(menuNodesDs.value || []).filter(n => n.parent === $item.id && n.menu)}">
+            <NavGroup label="{$item.label}">
+              <Items data="{(menuNodesDs.value || []).filter(n => n.parent === $item.id)}">
+                <NavLink label="{$item.label}" to="{$item.url}"/>
+              </Items>
+            </NavGroup>
+          </Items>
+        </NavGroup>
+      </Items>
+    </NavPanel>
+  
+
+ <Pages>
+    <Page url="/">
+      <MenuNodes/>
+    </Page>
+    <Page url="/accounts">
+      <Accounts/>
+    </Page>
+
+  <!--   <Page url="/customers">
+      <Customers/>
+    </Page>
+
+    <Page url="/invoices">
+      <Invoices/>
+    </Page>
+
+    <Page url="/customer/display">
+      
+      <CustomerDetails/>
+  
+    </Page>
+
+    <Page url="/clients">
+      <Clients/>
+    </Page>
+
+    <Page url="/clients/new">
+      <CreateClient/>
+    </Page>
+
+    <Page url="/icons">
+      <Icons/>
+    </Page>
+
+    <Page url="/palettes">
+      <Palettes/>
+    </Page>-->
+
+  </Pages>
+
+  <Theme>
+    <Footer>Built with XMLUI
+      <ToneChangerButton/>
+    </Footer>
+  </Theme>
+
+</App>
+</Component>

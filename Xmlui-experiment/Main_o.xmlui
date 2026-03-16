@@ -1,0 +1,115 @@
+<Fragment
+global.appAuthenticated='false'
+global.appToken=''
+global.appUserId=''
+global.appEmail=''
+global.appLoading='true'
+global.appStep=''
+global.appSearch=''
+global.appScope='customers'
+global.appCompanyId=''
+global.appCompanyName=''
+
+var.loginError=''
+  onInit="{
+    restoreSessionWithCallback((r) => {
+      console.log('[MAIN] Callback received:', r);
+      if (r && !r.error && r.token) {
+        appAuthenticated = true;
+        appToken = r.token;
+        appUserId = r._userId;  
+        appEmail = r._email;
+        appLoading = false;
+        appStep = '';
+      } else {
+        console.log('[MAIN] No valid session or error:', r);
+        appLoading = false;
+      }
+    });
+  }"
+>
+
+
+  <AuthenticatedApp when="{appAuthenticated}" />
+
+  <!-- Show login gate -->
+  <CHStack when="{!appAuthenticated && !appLoading}">
+    <Card when="{appStep !== 'otp'}" orientation="center">
+      <H1>
+        Authentication Required
+      </H1>
+      <Text>
+        You need to sign in to use the app.
+      </Text>
+      <Text when="{loginError}" color="red">
+        {loginError}
+      </Text>
+      <TextBox
+        id="txtEmail"
+        placeholder="Email"
+        endIcon="email"
+        borderColor="{loginError ? 'red' : undefined}"
+      />
+
+      <Button
+        label="Send link"
+        enabled="{window.isValidEmail(txtEmail.value)}"
+        variant="outlined"
+        onClick="{() => {
+          loginError = '';
+          sendOtpWithCallback(txtEmail.value, (r) => {
+            if (r?.error) loginError = r.error.message;
+            else {
+              appStep = 'otp';
+              appEmail = txtEmail.value;
+            }
+          });
+        }}"
+      />
+
+      <!-- Signup link -->
+      <Text>
+        Don't have an account?
+        <Link
+          onClick="{() => {
+            txtEmail.setValue('');
+            loginError = '';
+            if (!window.isValidEmail(txtEmail.value)) {
+              loginError = 'Please enter a valid email address';
+              return;
+            }
+            sendOtpWithCallback(txtEmail.value, (r) => {
+              if (r?.error) loginError = r.error.message;
+              else {
+                appStep = 'otp';
+                appEmail = txtEmail.value;
+              }
+            });
+          }}"
+        >
+          Sign up here
+        </Link>
+      </Text>
+
+      <!-- After user signs up, they need to confirm email before logging in -->
+    </Card>
+
+    <Card orientation="center" when="{appStep === 'otp'}">
+      <VStack>
+        <Text>
+          We sent you a temporary link.
+        </Text>
+        <Text>
+          Check your email at:
+        </Text>
+        <Text variant="strong">
+          {appEmail}.
+        </Text>
+      </VStack>
+      <Text when="{loginError}" color="red">
+        {loginError}
+      </Text>
+    </Card>
+  </CHStack>
+
+</Fragment>

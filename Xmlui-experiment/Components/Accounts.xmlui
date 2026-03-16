@@ -1,0 +1,201 @@
+<Component name="Accounts"
+  var.searchTerm=""
+  var.selectedAccountId=""
+  var.accountFilter="all">
+
+  <!-- List all accounts -->
+  <DataSource
+    id="accountsDs"
+    url="http://localhost:3000/erp/api/v0/accounts/"
+    headers="{{ Accept: 'application/json' }}"
+  />
+
+  <!-- List accounts filtered by label -->
+  <DataSource
+    id="accountsFilteredDs"
+    url="http://localhost:3000/erp/api/v0/accounts/"
+    queryParams="{{ label: searchTerm }}"
+    headers="{{ Accept: 'application/json' }}"
+    when="{searchTerm}"
+  />
+
+  <!-- Get single account by id -->
+  <DataSource
+    id="accountDs"
+    url="http://localhost:3000/erp/api/v0/accounts/{selectedAccountId}"
+    headers="{{ Accept: 'application/json' }}"
+    when="{selectedAccountId}"
+  />
+   
+       
+      
+        
+    
+
+  <VStack padding="$space-6" gap="$space-5">
+
+    <!-- Header row -->
+    <HStack verticalAlignment="center" gap="$space-3">
+      <VStack gap="$space-1">
+        <H2>Chart of Accounts</H2>
+        <Text variant="secondary">
+          {(accountsDs.value || []).length} accounts total &nbsp;·&nbsp;
+          {(accountsDs.value || []).filter(a => !a.obsolete).length} active &nbsp;·&nbsp;
+          {(accountsDs.value || []).filter(a => a.obsolete).length} obsolete
+        </Text>
+      </VStack>
+      <SpaceFiller/>
+      <HStack>
+          <!-- Filter dropdown -->
+         
+
+        
+          <Button
+            icon="plus"
+            label="New Account"
+            variant="outlined"
+          <!--  onClick="{() => navigate('/ChartofAccounts/New')}"-->
+          />
+        </HStack>
+    </HStack>
+
+    <!-- Summary stat cards -->
+    <HStack gap="$space-4">
+      <Card padding="$space-4" width="170px">
+        <VStack gap="$space-1">
+          <Text variant="secondary" size="small">Assets</Text>
+          <Text variant="strong" size="large">{(accountsDs.value || []).filter(a => a.category === 'A').length}</Text>
+        </VStack>
+      </Card>
+      <Card padding="$space-4" width="180px">
+        <VStack gap="$space-1">
+          <Text variant="secondary" size="small">Liabilities</Text>
+          <Text variant="strong" size="large">{(accountsDs.value || []).filter(a => a.category === 'L').length}</Text>
+        </VStack>
+      </Card>
+      <Card padding="$space-4" width="180px">
+        <VStack gap="$space-1">
+          <Text variant="secondary" size="small" fontVariant="subtitle">Equity</Text>
+          <Text variant="strong" size="large">{(accountsDs.value || []).filter(a => a.category === 'Q').length}</Text>
+        </VStack>
+      </Card>
+      <Card padding="$space-4" width="180px">
+        <VStack gap="$space-1">
+          <Text variant="secondary" size="small" fontVariant="subtitle">Income</Text>
+          <Text variant="strong" size="large">{(accountsDs.value || []).filter(a => a.category === 'I').length}</Text>
+        </VStack>
+      </Card>
+      <Card padding="$space-4" width="180px">
+        <VStack gap="$space-1">
+          <Text variant="secondary" size="small">Expense</Text>
+          <Text variant="strong" size="large">{(accountsDs.value || []).filter(a => a.category === 'E').length}</Text>
+        </VStack>
+      </Card>
+    </HStack>
+
+    <!-- Accounts table -->
+   <Card>
+   <Select
+            id="mnuAccountType"
+            width="200px"
+            initialValue="{accountFilter}"
+            borderColor="$color-primary"
+            onDidChange="{(val) => accountFilter = val}"
+          >
+            <Option label="All Accounts" value="all" />
+            <Option label="Active" value="active" />
+            <Option label="Inactive" value="inactive" />
+            <Option label="Assets" value="asset" />
+            <Option label="Liabilities" value="liability" />
+            <Option label="Equity" value="equity" />
+            <Option label="Income" value="income" />
+            <Option label="Expenses" value="expense" />
+          </Select>
+   </Card>
+    <Table
+      data="{(searchTerm ? accountsFilteredDs.value : accountsDs.value) || []}"
+      rowsSelectable="false">
+
+      <Column header="Account No" width="130px">
+        <Text variant="code">{$item.accno}</Text>
+      </Column>
+
+      <Column header="Description" width="400px">
+        <Text variant="strong">{$item.description}</Text>
+      </Column>
+
+      <Column header="Category" width="110px">
+        <Badge
+          value="{$item.category === 'A' ? 'Asset' : $item.category === 'L' ? 'Liability' : $item.category === 'Q' ? 'Equity' : $item.category === 'I' ? 'Income' : $item.category === 'E' ? 'Expense' : $item.category}"
+          variant="pill"
+          colorMap="{{
+            Asset:     { background: 'hsl(210,80%,88%)', label: 'hsl(210,80%,30%)' },
+            Liability: { background: 'hsl(0,80%,88%)',   label: 'hsl(0,80%,30%)' },
+            Equity:    { background: 'hsl(270,60%,88%)', label: 'hsl(270,60%,30%)' },
+            Income:    { background: 'hsl(145,60%,85%)', label: 'hsl(145,60%,25%)' },
+            Expense:   { background: 'hsl(35,90%,85%)',  label: 'hsl(35,90%,25%)' }
+          }}"
+        />
+      </Column>
+
+      <Column header="Tax" width="60px">
+        <Icon name="{$item.tax ? 'check' : 'close'}" />
+      </Column>
+
+      <Column header="Recon" width="70px">
+        <Icon name="{$item.recon ? 'check' : 'close'}" />
+      </Column>
+
+      <Column header="Status" width="100px">
+        <Badge
+          value="{$item.obsolete ? 'Obsolete' : 'Active'}"
+          variant="pill"
+          colorMap="{{
+            Active:   { background: 'hsl(145,63%,40%)', label: 'white' },
+            Obsolete: { background: 'hsl(0,0%,70%)',    label: 'white' }
+          }}"
+        />
+      </Column>
+      <Column id="actions" header=" " width="50px">
+          <DropdownMenu
+            triggerButtonVariant="outlined"
+            triggerButtonThemeColor="secondary"
+            triggerButtonIcon="dotmenuhorizontal"
+            alignment="end"
+          >
+
+            <MenuItem
+             
+              label="Edit"
+              icon="pen"
+             
+            />
+
+            <MenuItem
+              
+              label="Mark as Inactive"
+              icon="close"
+             
+            />
+
+            <MenuItem
+              
+              label="Mark as Active"
+              icon="checkmark"
+              
+            />
+
+            <MenuItem
+             
+              label="Delete"
+              icon="trash"
+              
+            />
+          </DropdownMenu>
+        </Column>
+
+    </Table>
+
+  </VStack>
+
+</Component>
