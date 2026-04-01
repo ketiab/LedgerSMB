@@ -115,7 +115,7 @@ sub recurring_transactions {
                       (s.nextdate IS NULL OR s.nextdate > s.enddate)
                           AS expired
              FROM recurring s
-             JOIN ar a ON (a.id = s.id)
+             JOIN ar a ON (a.trans_id = s.id)
                      JOIN entity_credit_account eca
                           ON a.entity_credit_account = eca.id
              JOIN entity e ON (eca.entity_id = e.id)
@@ -137,7 +137,7 @@ sub recurring_transactions {
                   (s.nextdate IS NULL OR s.nextdate > s.enddate)
                   AS expired
              FROM recurring s
-             JOIN ap a ON (a.id = s.id)
+             JOIN ap a ON (a.trans_id = s.id)
                      JOIN entity_credit_account eca
                           ON a.entity_credit_account = eca.id
              JOIN entity e ON (eca.entity_id = e.id)
@@ -147,7 +147,7 @@ sub recurring_transactions {
             UNION
 
            SELECT 'gl' AS module, 'gl' AS transaction,
-                  a.description, (SELECT SUM(ac.amount_bc)
+                  txn.description, (SELECT SUM(ac.amount_bc)
              FROM acc_trans ac
             WHERE ac.trans_id = a.id
               AND ac.amount_bc > 0) AS amount,
@@ -161,52 +161,55 @@ sub recurring_transactions {
                   (s.nextdate IS NULL OR s.nextdate > s.enddate)
                   AS expired
              FROM recurring s
+             JOIN transactions txn ON s.id = txn.id
              JOIN gl a ON (a.id = s.id)
         LEFT JOIN recurringemail se ON (se.id = s.id)
         LEFT JOIN recurringprint sp ON (sp.id = s.id)
 
-            UNION
-
-           SELECT 'oe' AS module, 'so' AS transaction,
-                  e.name AS description, a.amount_tc as amount,
-                          extract(days from recurring_interval) as days,
-                extract(months from recurring_interval) as months,
-                extract(years from recurring_interval) as years,
-                  s.*, se.formname AS recurringemail,
-                  sp.formname AS recurringprint,
-                  s.nextdate - current_date AS overdue,
-                  'customer' AS vc,
-                  a.curr,
-                  (s.nextdate IS NULL OR s.nextdate > s.enddate)
-                  AS expired
-             FROM recurring s
-             JOIN oe a ON (a.id = s.id)
-             JOIN entity e ON (a.entity_id = e.id)
-        LEFT JOIN recurringemail se ON (se.id = s.id)
-        LEFT JOIN recurringprint sp ON (sp.id = s.id)
-            WHERE a.quotation = '0'
-
-            UNION
-
-           SELECT 'oe' AS module, 'po' AS transaction,
-                  e.name AS description, a.amount_tc as amount,
-                          extract(days from recurring_interval) as days,
-                extract(months from recurring_interval) as months,
-                extract(years from recurring_interval) as years,
-                  s.*, se.formname AS recurringemail,
-                  sp.formname AS recurringprint,
-                  s.nextdate - current_date AS overdue, 'vendor' AS vc,
-                  a.curr,
-                  (s.nextdate IS NULL OR s.nextdate > s.enddate)
-                  AS expired
-             FROM recurring s
-             JOIN oe a ON (a.id = s.id)
-             JOIN entity e ON (a.entity_id = e.id)
-        LEFT JOIN recurringemail se ON (se.id = s.id)
-        LEFT JOIN recurringprint sp ON (sp.id = s.id)
-            WHERE a.quotation = '0'
-
          ORDER BY $sortorder|;
+
+    # orders and transactions don't share the same 'id' which makes the bit below totally broken:
+
+        #     UNION
+
+        #    SELECT 'oe' AS module, 'so' AS transaction,
+        #           e.name AS description, a.amount_tc as amount,
+        #                   extract(days from recurring_interval) as days,
+        #         extract(months from recurring_interval) as months,
+        #         extract(years from recurring_interval) as years,
+        #           s.*, se.formname AS recurringemail,
+        #           sp.formname AS recurringprint,
+        #           s.nextdate - current_date AS overdue,
+        #           'customer' AS vc,
+        #           a.curr,
+        #           (s.nextdate IS NULL OR s.nextdate > s.enddate)
+        #           AS expired
+        #      FROM recurring s
+        #      JOIN oe a ON (a.id = s.id)
+        #      JOIN entity e ON (a.entity_id = e.id)
+        # LEFT JOIN recurringemail se ON (se.id = s.id)
+        # LEFT JOIN recurringprint sp ON (sp.id = s.id)
+        #     WHERE a.quotation = '0'
+
+        #     UNION
+
+        #    SELECT 'oe' AS module, 'po' AS transaction,
+        #           e.name AS description, a.amount_tc as amount,
+        #                   extract(days from recurring_interval) as days,
+        #         extract(months from recurring_interval) as months,
+        #         extract(years from recurring_interval) as years,
+        #           s.*, se.formname AS recurringemail,
+        #           sp.formname AS recurringprint,
+        #           s.nextdate - current_date AS overdue, 'vendor' AS vc,
+        #           a.curr,
+        #           (s.nextdate IS NULL OR s.nextdate > s.enddate)
+        #           AS expired
+        #      FROM recurring s
+        #      JOIN oe a ON (a.id = s.id)
+        #      JOIN entity e ON (a.entity_id = e.id)
+        # LEFT JOIN recurringemail se ON (se.id = s.id)
+        # LEFT JOIN recurringprint sp ON (sp.id = s.id)
+        #     WHERE a.quotation = '0'
 
     my $sth = $dbh->prepare($query);
     $sth->execute || $form->dberror($query);

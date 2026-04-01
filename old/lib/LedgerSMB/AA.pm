@@ -283,17 +283,30 @@ sub post_transaction {
         my $uid = localtime;
         $uid .= "$$";
 
+        $query = q|
+            INSERT INTO transactions (table_name, trans_type_code, approved)
+            VALUES ('ar', 'ar', false)
+            |;
+        $dbh->do($query) or $form->dberror($query);
+
+        ($accno) = split /--/, $form->{$ARAP};
+        $query = qq{
+            INSERT INTO open_item (item_number, item_type, account_id)
+            VALUES (? || '-' || currval('transactions_id_seq'), ?, (SELECT id FROM account WHERE accno = ?))
+            };
+        $dbh->do($query, {}, $ARAP, $table, $accno) or $form->dberror($query);
+
         $query = qq|
-            INSERT INTO $table (invnumber, person_id, entity_credit_account)
-                 VALUES ('$uid', ?, ?)|;
+            INSERT INTO $table (trans_id, invnumber, open_item_id, person_id, entity_credit_account)
+                 VALUES (currval('transactions_id_seq'), '$uid', currval('open_item_id_seq'), ?, ?)|;
         $sth = $dbh->prepare($query);
         $sth->execute( $form->{employee_id}, $form->{"$form->{vc}_id"}) || $form->dberror($query);
 
-        $query = qq|SELECT id FROM $table WHERE invnumber = '$uid'|;
+        $query = qq|SELECT trans_id, open_item_id FROM $table WHERE invnumber = '$uid'|;
         $sth   = $dbh->prepare($query);
         $sth->execute || $form->dberror($query);
 
-        ( $form->{id} ) = $sth->fetchrow_array;
+        ( $form->{id}, $form->{open_item_id} ) = $sth->fetchrow_array;
 
         $query = <<~'SQL';
            UPDATE transactions
@@ -313,7 +326,6 @@ sub post_transaction {
     $query = qq|
       UPDATE ar
          SET invnumber = ?,
-             description = ?,
              ordnumber = ?,
              taxincluded = ?,
              amount_bc = ?,
@@ -329,16 +341,14 @@ sub post_transaction {
              reverse = ?,
              person_id = ?,
              entity_credit_account = ?,
-             approved = ?,
              setting_sequence = ?
-       WHERE id = ?
+       WHERE trans_id = ?
     |;
    }
    else {
     $query = qq|
       UPDATE $table
          SET invnumber = ?,
-             description = ?,
              ordnumber = ?,
              taxincluded = ?,
              amount_bc = ?,
@@ -354,8 +364,7 @@ sub post_transaction {
              reverse = ?,
              person_id = ?,
              entity_credit_account = ?,
-             approved = ?
-       WHERE id = ?
+       WHERE trans_id = ?
     |;
    }
 
@@ -366,7 +375,7 @@ sub post_transaction {
     $approved = 0 if $form->get_setting('separate_duties');
 
     my @queryargs = (
-        $form->{invnumber},        $form->{description},
+        $form->{invnumber},
         $form->{ordnumber},
         $form->{taxincluded},
         $invamount,                $invnetamount,
@@ -377,7 +386,6 @@ sub post_transaction {
         $form->{ponumber},         $form->{crdate},
         $form->{reverse},          $form->{employee_id},
         $form->{"$form->{vc}_id"},
-        $approved
         );
     if ($table eq 'ar') {
         push @queryargs, $form->{setting_sequence}
@@ -386,6 +394,11 @@ sub post_transaction {
 
     $sth = $dbh->prepare($query) or $form->dberror($query);
     $sth->execute(@queryargs) or $form->dberror($query);
+
+    $dbh->do(q{UPDATE transactions SET description = ?, approved = ? WHERE id = ?},
+             {},
+             $form->{description}, $approved, $form->{id})
+        or die $dbh->errstr;
 
     if (defined $form->{approved}) {
         if (!$form->{approved} && $form->{batch_id}){
@@ -498,13 +511,13 @@ sub post_transaction {
         ($accno) = split /--/, $form->{$ARAP};
         $query = qq|
             INSERT INTO acc_trans
-                     (trans_id, chart_id, amount_bc, curr, amount_tc,
-                      transdate, approved)
+                     (trans_id, chart_id, open_item_id,
+                      amount_bc, curr, amount_tc, transdate, approved)
               VALUES (?, (SELECT id FROM account
-                              WHERE accno = ?),
+                              WHERE accno = ?), ?,
                            ?, ?, ?, ?, ?)|;
         @queryargs =
-            ( $form->{id}, $accno,
+            ( $form->{id}, $accno, $form->{open_item_id},
               $invamount * -1 * $ml, $form->{currency},
               $invamount * -1 * $ml / $form->{exchangerate},
               $form->{transdate},
@@ -944,7 +957,7 @@ sub save_intnotes {
         $form->error('Bad arap in save_intnotes');
     }
     my $sth = $form->{dbh}->prepare("UPDATE $table SET intnotes = ? " .
-                                      "where id = ?");
+                                      "where trans_id = ?");
     $sth->execute($form->{intnotes}, $form->{id});
 }
 
@@ -965,7 +978,7 @@ sub save_employee {
         $form->error('Bad arap in save_employee');
     }
     my $sth = $form->{dbh}->prepare("UPDATE $table SET person_id = ? " .
-                                    "where id = ?");
+                                    "where trans_id = ?");
     my ($name, $person_id) = split(/--/, $form->{employee}, 2);
     $sth->execute($person_id, $form->{id});
 }

@@ -41,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Cancel Previous Runs
-        uses: styfle/cancel-workflow-action@0.13.0
+        uses: styfle/cancel-workflow-action@0.13.1
         with:
           access_token: ${{ github.token }}
 
@@ -85,9 +85,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Dump environment variables & event
-      - uses: hmarr/debug-action@v3
-
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - name: Checkout
         uses: actions/checkout@v6
@@ -232,7 +229,7 @@ jobs:
       # Label used to access the service container
       postgres:
         # Docker database image
-        image: ghcr.io/ledgersmb/dev-postgres:${{ matrix.postgres }}
+        image: ghcr.io/ledgersmb-devel/dev-postgres:${{ matrix.postgres }}
         # Maps tcp port 5432 on service container to the host
         ports:
           - 5432:5432
@@ -281,7 +278,7 @@ jobs:
       # Label used to access the service container
       postgres:
         # Docker database image
-        image: ghcr.io/ledgersmb/dev-postgres:${{ matrix.postgres }}
+        image: ghcr.io/ledgersmb-devel/dev-postgres:${{ matrix.postgres }}
         # Maps tcp port 5432 on service container to the host
         ports:
           - 5432:5432
@@ -414,12 +411,13 @@ jobs:
             BROWSER: "chrome"
             DB_TESTING: 1
             JOB_COUNT: 5
+            COA_TESTING: 1
 
     services:
       # Label used to access the service container
       postgres:
         # Docker database image
-        image: ghcr.io/ledgersmb/dev-postgres:${{ matrix.postgres }}
+        image: ghcr.io/ledgersmb-devel/dev-postgres:${{ matrix.postgres }}
         # Maps tcp port 5432 on service container to the host
         ports:
           - 5432:5432
@@ -564,12 +562,6 @@ jobs:
         if: ${{ matrix.COVERAGE }}
 
       # Send logs & artifacts
-      - name: Collect docker logs
-        uses: jwalton/gh-docker-logs@v2
-        with:
-          dest: 'logs/docker-logs'
-        if: always()
-
       - name: Archive production artifacts
         uses: actions/upload-artifact@v7
         with:
@@ -634,7 +626,7 @@ jobs:
         uses: peter-evans/repository-dispatch@v4
         with:
           token: ${{ secrets.KICK_DEV_IMG_BUILD_TOKEN }}
-          repository: ${{ github.repository_owner }}/ledgersmb-dev-docker
+          repository: ${{ github.repository_owner }}-devel/ledgersmb-dev-docker
           event-type: master-updated
           client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ github.sha }}"}'
         if: steps.pr_trigger.outputs.MUST_TRIGGER

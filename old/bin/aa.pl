@@ -363,7 +363,8 @@ sub create_links {
         foreach my $i ( 1 .. scalar @{ $form->{acc_trans}{$key} } ) {
 
 
-            if ( $key eq "$form->{ARAP}_paid" ) {
+            if ( $key eq "$form->{ARAP}_paid"
+                 or $key eq "$form->{ARAP}_overpayment" ) {
 
                 $form->{"$form->{ARAP}_paid_$i"} =
 "$form->{acc_trans}{$key}->[$i-1]->{accno}--$form->{acc_trans}{$key}->[$i-1]->{description}";
@@ -1329,8 +1330,8 @@ sub approve {
     $wf->execute_action( $form->{__action} );
     my $query =
         ($form->{vc} eq 'customer')
-        ? 'select invnumber from ar where id = ?'
-        : 'select invnumber from ap where id = ?';
+        ? 'select invnumber from ar where trans_id = ?'
+        : 'select invnumber from ap where trans_id = ?';
     my $sth = $form->{dbh}->prepare($query)
         or $form->dberror($query);
     $sth->execute( $form->{id} )

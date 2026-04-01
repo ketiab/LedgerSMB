@@ -140,20 +140,14 @@ RETURN QUERY EXECUTE $sql$
                                 ec.id IN
                                 (SELECT entity_credit_account
                                    FROM acc_trans
-                                   JOIN account_link l ON (acc_trans.chart_id = l.account_id)
-                                   JOIN ap ON (acc_trans.trans_id = ap.id)
-                                   WHERE l.description = 'AP'
-                                   GROUP BY chart_id,
-                                         trans_id, entity_credit_account
+                                   JOIN ap ON (acc_trans.open_item_id = ap.open_item_id)
+                                   GROUP BY ap.open_item_id, entity_credit_account
                                    HAVING SUM(acc_trans.amount_bc) <> 0)
                                WHEN $1 = 2 THEN
                                 ec.id IN (SELECT entity_credit_account
                                    FROM acc_trans
-                                   JOIN account_link l ON (acc_trans.chart_id = l.account_id)
-                                   JOIN ar ON (acc_trans.trans_id = ar.id)
-                                   WHERE l.description = 'AR'
-                                   GROUP BY chart_id,
-                                         trans_id, entity_credit_account
+                                   JOIN ar ON (acc_trans.open_item_id = ar.open_item_id)
+                                   GROUP BY ar.open_item_id, entity_credit_account
                                    HAVING SUM(acc_trans.amount_bc) <> 0)
                           END
 $sql$
@@ -194,6 +188,7 @@ DROP TYPE IF EXISTS payment_invoice CASCADE;
 
 CREATE TYPE payment_invoice AS (
         invoice_id int,
+        open_item_id int,
         invnumber text,
         invoice bool,
         invoice_date date,
@@ -221,7 +216,7 @@ RETURNS SETOF payment_invoice AS
 $$
 BEGIN
 RETURN QUERY EXECUTE $sql$
-                SELECT a.id AS invoice_id, a.invnumber AS invnumber,a.invoice AS invoice,
+                SELECT a.id AS invoice_id, a.open_item_id, a.invnumber AS invnumber,a.invoice AS invoice,
                        a.transdate AS invoice_date, a.amount_bc AS amount,
                        a.amount_tc,
                        (CASE WHEN (c.discount_terms||' days')::interval < age(coalesce($8, current_date), a.transdate)
@@ -242,22 +237,19 @@ RETURN QUERY EXECUTE $sql$
                          END) AS due_fx,
                         null::numeric AS exchangerate,
                         a.description
-                 --TODO HV prepare drop entity_id from ap,ar
-                 --FROM  (SELECT id, invnumber, transdate, amount, entity_id,
-                 FROM  (SELECT txn.id, invnumber, invoice, txn.transdate, amount_bc,
+                 FROM  (SELECT txn.id, open_item_id, invnumber, invoice, txn.transdate, amount_bc,
                        amount_tc,
                                1 as invoice_class, curr,
                                entity_credit_account, txn.approved, description
-                          FROM ap JOIN transactions txn ON txn.id = ap.id
+                          FROM ap JOIN transactions txn ON txn.id = ap.trans_id
                          UNION
-                         --SELECT id, invnumber, transdate, amount, entity_id,
-                         SELECT txn.id, invnumber, invoice, txn.transdate, amount_bc,
+                         SELECT txn.id, open_item_id, invnumber, invoice, txn.transdate, amount_bc,
                       amount_tc,
                                2 AS invoice_class, curr,
                                entity_credit_account, txn.approved, description
-                         FROM ar JOIN transactions txn ON txn.id = ar.id
+                         FROM ar JOIN transactions txn ON txn.id = ar.trans_id
                          ) a
-                JOIN (SELECT trans_id, chart_id,
+                JOIN (SELECT open_item_id,
                              sum(CASE WHEN $1 = 1 THEN amount_bc
                                       WHEN $1 = 2 THEN amount_bc * -1
                                   END) as due,
@@ -265,13 +257,9 @@ RETURN QUERY EXECUTE $sql$
                                       WHEN $1 = 2 THEN amount_tc * -1
                                  END) as due_fx
                         FROM acc_trans
-                      GROUP BY trans_id, chart_id) ac ON (ac.trans_id = a.id)
-                        JOIN account_link l ON (l.account_id = ac.chart_id)
+                      GROUP BY open_item_id) ac ON (ac.open_item_id = a.open_item_id)
                         JOIN entity_credit_account c ON (c.id = a.entity_credit_account)
-                --        OR (a.entity_credit_account IS NULL and a.entity_id = c.entity_id))
-                        WHERE ((l.description = 'AP' AND $1 = 1)
-                              OR (l.description = 'AR' AND $1 = 2))
-                        AND a.invoice_class = $1
+                        WHERE  a.invoice_class = $1
                         AND c.entity_class = $1
                         AND c.id = $2
                         --### short term: ignore fractional cent differences
@@ -286,8 +274,8 @@ RETURN QUERY EXECUTE $sql$
                              OR $7 IS NULL)
                         AND due <> 0
                         AND a.approved = true
-                        GROUP BY a.invnumber, a.transdate, a.amount_bc, amount_tc,
-              discount, discount_tc, ac.due, ac.due_fx, a.id, c.discount_terms,
+                        GROUP BY a.id, a.open_item_id, a.invnumber, a.transdate, a.amount_bc, amount_tc,
+              discount, discount_tc, ac.due, ac.due_fx, c.discount_terms,
               a.curr, a.invoice, a.description
 $sql$
 USING in_account_class, in_entity_credit_id, in_curr, in_datefrom,
@@ -369,7 +357,7 @@ RETURN QUERY EXECUTE $sql$
                              ELSE 0::numeric
                              END) AS total_due,
                          array_agg(ARRAY[
-                              a.id::text, a.invnumber, a.transdate::text,
+                              a.id::text, a.open_item_id::text, a.invnumber, a.transdate::text,
                               a.amount_bc::text, (a.amount_bc - p.due)::text,
                               (CASE WHEN (c.discount_terms||' days')::interval
                                         < age(coalesce($10, current_date), a.transdate)
@@ -398,41 +386,37 @@ RETURN QUERY EXECUTE $sql$
 
                     FROM entity e
                     JOIN entity_credit_account c ON (e.id = c.entity_id)
-                    JOIN (SELECT ap.id, invnumber, txn.transdate, amount_bc,
+                    JOIN (SELECT txn.id, ap.open_item_id, invnumber, txn.transdate, amount_bc,
                                  curr, 1 as invoice_class,
                                  entity_credit_account, on_hold, v.batch_id,
                                  txn.approved
-                            FROM ap JOIN transactions txn USING (id)
+                            FROM ap JOIN transactions txn ON ap.trans_id = txn.id
                        LEFT JOIN (select * from voucher where batch_class = 1) v
-                                 ON (ap.id = v.trans_id)
+                                 ON (ap.trans_id = v.trans_id)
                            WHERE $1 = 1
                                  AND (v.batch_class = 1 or v.batch_id IS NULL)
                            UNION
-                          SELECT ar.id, invnumber, txn.transdate, amount_bc,
+                          SELECT txn.id, ar.open_item_id, invnumber, txn.transdate, amount_bc,
                                  curr, 2 as invoice_class,
                                  entity_credit_account, on_hold, v.batch_id,
                                  txn.approved
-                            FROM ar JOIN transactions txn USING (id)
+                            FROM ar JOIN transactions txn ON ar.trans_id = txn.id
                        LEFT JOIN (select * from voucher where batch_class = 2) v
-                                 ON (ar.id = v.trans_id)
+                                 ON (ar.trans_id = v.trans_id)
                            WHERE $1 = 2
                                  AND (v.batch_class = 2 or v.batch_id IS NULL)
                         ORDER BY transdate
                          ) a ON (a.entity_credit_account = c.id)
                     JOIN transactions t ON (a.id = t.id)
-                    JOIN (SELECT acc_trans.trans_id,
+                    JOIN (SELECT acc_trans.open_item_id,
                                  sum(CASE WHEN $1 = 1 THEN amount_bc
                                           WHEN $1 = 2
                                           THEN amount_bc * -1
                                      END) AS due
                             FROM acc_trans
-                            JOIN account coa ON (coa.id = acc_trans.chart_id)
-                            JOIN account_link al ON (al.account_id = coa.id)
                        LEFT JOIN voucher v ON (acc_trans.voucher_id = v.id)
-                           WHERE ((al.description = 'AP' AND $1 = 1)
-                                 OR (al.description = 'AR' AND $1 = 2))
-                           AND (approved IS TRUE or v.batch_class IN (3, 6))
-                        GROUP BY acc_trans.trans_id) p ON (a.id = p.trans_id)
+                           WHERE (approved IS TRUE or v.batch_class IN (3, 6))
+                        GROUP BY acc_trans.open_item_id) p ON (a.open_item_id = p.open_item_id)
                 LEFT JOIN "session" s ON (s."session_id" = t.locked_by)
                 LEFT JOIN users u ON (u.id = s.users_id)
                    WHERE (a.batch_id = $6
@@ -441,7 +425,8 @@ RETURN QUERY EXECUTE $sql$
                          AND due <> 0
                          AND NOT a.on_hold
                          AND a.curr = $3
-                         AND EXISTS (select trans_id FROM acc_trans
+                         AND EXISTS (select 1
+                                       FROM acc_trans
                                       WHERE trans_id = a.id AND
                                             chart_id = (SELECT id from account
                                                          WHERE accno
@@ -554,6 +539,7 @@ BEGIN
 
         CREATE TEMPORARY TABLE bulk_payments_in (
             id int,                   -- AR/AP id
+            open_item_id int,         -- open_item.id
             payment_id int,           -- payment.id
             eca_id int,               -- entity_credit_account.id
             entry_id int,             -- acc_trans.entry_id
@@ -572,9 +558,10 @@ BEGIN
         LOOP
             -- Fill the bulk payments table
             IF in_transactions[out_count][2] <> 0 THEN
-               INSERT INTO bulk_payments_in(id, amount_tc)
-            VALUES (in_transactions[out_count][1],
-                    in_transactions[out_count][2]);
+               INSERT INTO bulk_payments_in(id, open_item_id, amount_tc)
+               VALUES (in_transactions[out_count][1],
+                       in_transactions[out_count][2],
+                       in_transactions[out_count][3]);
             END IF;
         END LOOP;
 
@@ -582,11 +569,11 @@ BEGIN
            SET eca_id =
                   (SELECT entity_credit_account FROM ar
                             WHERE in_account_class = 2
-                              AND bpi.id = ar.id
+                              AND bpi.id = ar.trans_id
                             UNION
                            SELECT entity_credit_account FROM ap
                             WHERE in_account_class = 1
-                              AND bpi.id = ap.id);
+                              AND bpi.id = ap.trans_id);
 
         CREATE TEMPORARY TABLE eca_payments_in AS
         SELECT eca_id, nextval('payment_id_seq') as payment_id,
@@ -747,7 +734,7 @@ BEGIN
            SET entry_id = nextval('acc_trans_entry_id_seq');
         INSERT INTO acc_trans
                (trans_id, chart_id, amount_bc, curr, amount_tc, approved,
-               voucher_id, transdate, source, entry_id)
+               voucher_id, transdate, source, entry_id, open_item_id)
         SELECT bpi.id, t_ar_ap_id,
                (bpi.amount_tc + bpi.disc_amount_tc)
                   * t_cash_sign * -1 * bpi.fxrate, in_currency,
@@ -755,7 +742,7 @@ BEGIN
                   * t_cash_sign * -1,
                CASE WHEN t_voucher_id IS NULL THEN true
                        ELSE false END,
-               t_voucher_id, in_payment_date, in_source, entry_id
+               t_voucher_id, in_payment_date, in_source, entry_id, open_item_id
           FROM bulk_payments_in bpi
           JOIN entity_credit_account eca ON bpi.eca_id = eca.id;
         INSERT INTO payment_links (payment_id, entry_id, type)
@@ -816,6 +803,7 @@ CREATE OR REPLACE FUNCTION payment_post
  in_source                        text[],
  in_memo                          text[],
  in_transaction_id                int[],
+ in_open_item_id                  int[],
  in_op_amount                     numeric[],
  in_op_cash_account_id            int[],
  in_op_source                     text[],
@@ -898,31 +886,40 @@ BEGIN
                       array_lower(in_cash_account_id, 1) ..
                       array_upper(in_cash_account_id, 1)
       LOOP
-        -- Insert cash account side of the payment
+        -- Insert the side the allocation is coming from;
+        -- which can be (a) a cash account; or (b) an overpayment account
+        --
+        -- When overpayments are posted, the source account must be posted
+        -- with an open_item_id to attribute the transaction as change in
+        -- the overpayment balance
+        --
         -- Each payment can have its own cash account set through the UI
-        INSERT INTO acc_trans
-               (chart_id, amount_bc, curr, amount_tc, trans_id,
-                transdate, approved, source, memo)
-              VALUES (in_cash_account_id[out_count],
-                      in_amount[out_count]*current_exchangerate*sign,
-                      in_curr,
-                      in_amount[out_count]*sign,
-                      in_transaction_id[out_count],
-                      in_datepaid,
-                      coalesce(in_approved, true),
-                      in_source[out_count],
-                      in_memo[out_count]);
+        DECLARE
+          t_open_item_id int;
+        BEGIN
+          IF (in_ovp_payment_id IS NOT NULL) THEN
+            t_open_item_id := in_ovp_payment_id[out_count];
+          ELSE
+            t_open_item_id := NULL;
+          END IF;
+          INSERT INTO acc_trans
+                 (chart_id, amount_bc, curr, amount_tc, trans_id,
+                  transdate, approved, source, memo, open_item_id)
+                VALUES (in_cash_account_id[out_count],
+                        in_amount[out_count]*current_exchangerate*sign,
+                        in_curr,
+                        in_amount[out_count]*sign,
+                        in_transaction_id[out_count],
+                        in_datepaid,
+                        coalesce(in_approved, true),
+                        in_source[out_count],
+                        in_memo[out_count],
+                        t_open_item_id);
+        END;
+
         -- Link the ledger line to the payment record
         INSERT INTO payment_links
              VALUES (var_payment_id, currval('acc_trans_entry_id_seq'), 1);
-        IF (in_ovp_payment_id IS NOT NULL
-           AND in_ovp_payment_id[out_count] IS NOT NULL) THEN
-          -- mark the current transaction as being the consequence of an overpayment
-          -- (lowering the customer account balance)
-          INSERT INTO payment_links
-                VALUES (in_ovp_payment_id[out_count],
-                        currval('acc_trans_entry_id_seq'), 0);
-       END IF;
       END LOOP;
 
       -- HANDLE THE AR/AP ACCOUNTS
@@ -931,16 +928,17 @@ BEGIN
                    array_lower(in_transaction_id, 1) ..
                    array_upper(in_transaction_id, 1)
       LOOP
-        SELECT chart_id, amount_bc/amount_tc
+        SELECT oi.account_id, amount_bc/amount_tc
                INTO var_account_id, old_exchangerate
-          FROM acc_trans as ac
-          JOIN account_link as l ON (l.account_id = ac.chart_id)
-         WHERE trans_id = in_transaction_id[out_count]
-               AND ( l.description in ('AR', 'AP'));
+          FROM (select open_item_id, amount_bc, amount_tc from ar
+                union all
+                select open_item_id, amount_bc, amount_tc from ap) aa
+               JOIN open_item oi ON aa.open_item_id = oi.id
+         WHERE open_item_id = in_open_item_id[out_count];
 
-        -- Now we post the AP/AR transaction
+        -- Now we post the AP/AR account
         INSERT INTO acc_trans (chart_id, amount_bc, curr, amount_tc,
-                               trans_id, transdate, approved, source, memo)
+                               trans_id, transdate, approved, source, memo, open_item_id)
               VALUES (var_account_id,
                       in_amount[out_count]*old_exchangerate*sign*-1,
                       in_curr,
@@ -949,7 +947,8 @@ BEGIN
                       in_datepaid,
                       coalesce(in_approved, true),
                       in_source[out_count],
-                      in_memo[out_count]);
+                      in_memo[out_count],
+                      in_open_item_id[out_count]);
         -- Link the ledger line to the payment record
         INSERT INTO payment_links
               VALUES (var_payment_id, currval('acc_trans_entry_id_seq'), 1);
@@ -995,16 +994,13 @@ BEGIN
    --
    -- HANDLE THE OVERPAYMENTS NOW
    IF (array_upper(in_op_cash_account_id, 1) > 0) THEN
-     INSERT INTO transactions (
-       reference, description,
-       transdate, entered_by, approved, trans_type_code, table_name)
-     VALUES (setting_increment('paynumber'),
-             in_gl_description, in_datepaid, var_employee,
-             in_approved, 'op', 'payment')
-     RETURNING id INTO var_txn_id;
-
-       UPDATE payment SET trans_id = var_txn_id
-        WHERE id = var_payment_id;
+       INSERT INTO transactions (
+         reference, description,
+         transdate, entered_by, approved, trans_type_code, table_name)
+       VALUES (setting_increment('paynumber'),
+               in_gl_description, in_datepaid, var_employee,
+               in_approved, 'op', 'payment')
+       RETURNING id INTO var_txn_id;
 
        FOR out_count IN
                         array_lower(in_op_cash_account_id, 1) ..
@@ -1022,9 +1018,6 @@ BEGIN
                      coalesce(in_approved, true),
                      in_op_source[out_count],
                      in_op_memo[out_count]);
-         INSERT INTO payment_links
-              VALUES (var_payment_id, currval('acc_trans_entry_id_seq'), 2);
-
        END LOOP;
 
        -- NOW LETS HANDLE THE OVERPAYMENT ACCOUNTS
@@ -1032,8 +1025,18 @@ BEGIN
                      array_lower(in_op_account_id, 1) ..
                      array_upper(in_op_account_id, 1)
        LOOP
+         INSERT INTO open_item (
+           item_number, item_type, account_id
+         )
+         VALUES ('overpay-' || var_txn_id, 'op', in_op_account_id[out_count]);
+
+         INSERT INTO overpayment (
+           open_item_id, eca_id
+         )
+         VALUES (currval('open_item_id_seq'), in_entity_credit_id);
+
          INSERT INTO acc_trans (chart_id, amount_bc, curr, amount_tc, trans_id,
-                               transdate, approved, source, memo)
+                                transdate, approved, source, memo, open_item_id)
                 VALUES (in_op_account_id[out_count],
                      in_op_amount[out_count]*current_exchangerate*sign*-1,
                      in_curr,
@@ -1042,9 +1045,8 @@ BEGIN
                      in_datepaid,
                      coalesce(in_approved, true),
                      in_op_source[out_count],
-                     in_op_memo[out_count]);
-         INSERT INTO payment_links
-                VALUES (var_payment_id, currval('acc_trans_entry_id_seq'), 2);
+                     in_op_memo[out_count],
+                     currval('open_item_id_seq'));
        END LOOP;
  END IF;
  return var_payment_id;
@@ -1064,6 +1066,7 @@ COMMENT ON FUNCTION payment_post
  in_source                        text[],
  in_memo                          text[],
  in_transaction_id                int[],
+ in_open_item_id                  int[],
  in_op_amount                     numeric[],
  in_op_cash_account_id            int[],
  in_op_source                     text[],
@@ -1282,13 +1285,14 @@ BEGIN
     INSERT INTO acc_trans (trans_id, chart_id, transdate, source,
                            cleared, memo, invoice_id, approved,
                            amount_bc, amount_tc, curr,
-                           voucher_id)
+                           voucher_id, open_item_id)
      SELECT trans_id, chart_id, in_payment_date, source,
             false, memo, null, coalesce(in_approved, true),
             -1 * amount_bc, -1 * amount_tc, curr,
             (select id from voucher v
               where a.trans_id = v.trans_id
-                    and v.batch_id = in_batch_id) as voucher_id
+                and v.batch_id = in_batch_id) as voucher_id,
+            open_item_id
        FROM acc_trans a
       WHERE exists (select 1 from payment_links pl
                      where pl.payment_id = in_payment_id
@@ -1411,24 +1415,46 @@ it is usefull for printing payments and build reports :) $$;
 
 DROP VIEW IF EXISTS overpayments CASCADE;
 CREATE VIEW overpayments AS
-SELECT p.id as payment_id, p.reference as payment_reference, p.payment_class, p.closed as payment_closed,
-       p.payment_date, ac.chart_id, c.accno, c.description as chart_description,
-       sum(ac.amount_bc) * CASE WHEN eca.entity_class = 1 THEN -1 ELSE 1 END
-          as available, cmp.legal_name,
-       eca.id as entity_credit_id, eca.entity_id, eca.discount, eca.meta_number
-FROM payment p
-JOIN payment_links pl ON (pl.payment_id=p.id)
-JOIN acc_trans ac ON (ac.entry_id=pl.entry_id)
-JOIN account c ON (c.id=ac.chart_id)
-JOIN account_link l ON l.account_id = c.id
-JOIN entity_credit_account eca ON (eca.id = p.entity_credit_id)
-JOIN company cmp ON (cmp.entity_id=eca.entity_id)
-WHERE p.trans_id IS NOT NULL
-      AND (pl.type = 2 OR pl.type = 0)
-      AND l.description LIKE '%overpayment'
-GROUP BY p.id, c.accno, p.reference, p.payment_class, p.closed, p.payment_date,
-      ac.chart_id, chart_description,legal_name, eca.id,
-      eca.entity_id, eca.discount, eca.meta_number, eca.entity_class;
+  WITH opening_transactions AS (
+    SELECT open_item_id, trans_id, amount_bc, amount_tc, curr
+      FROM (
+        SELECT open_item_id, trans_id, amount_bc, amount_tc, curr,
+               (row_number() over (partition by open_item_id)) = 1 as opening
+          FROM acc_trans
+         WHERE open_item_id is not null
+      ) x
+     WHERE opening
+  ),
+  open_item_openings AS (
+    SELECT otxn.open_item_id, otxn.amount_bc, otxn.amount_tc, otxn.curr, txn.transdate
+      FROM transactions txn
+             JOIN opening_transactions otxn
+                 ON txn.id = otxn.trans_id
+  )
+  SELECT op.id as overpayment_id, oi.item_number as payment_reference,
+         eca.entity_class as payment_class, oio.transdate as payment_date,
+         oio.amount_bc as opening_balance_bc, oio.amount_tc as opening_balance_tc,
+         oio.curr as curr, oi.account_id, c.accno, c.description as chart_description,
+         sum(ac.amount_bc) * CASE WHEN eca.entity_class = 1 THEN -1 ELSE 1 END
+           as available, cmp.legal_name,
+         eca.id as entity_credit_id, eca.entity_id, eca.discount, eca.meta_number
+    FROM overpayment op
+           JOIN open_item oi
+               ON op.open_item_id = oi.id
+           JOIN open_item_openings oio
+               ON oi.id = oio.open_item_id
+           JOIN acc_trans ac
+               ON ac.open_item_id = oi.id
+           JOIN account c
+               ON oi.account_id = c.id
+           JOIN entity_credit_account eca
+               ON eca.id = op.eca_id
+           JOIN company cmp
+               ON cmp.entity_id = eca.entity_id
+   GROUP BY op.id, oi.item_number, eca.entity_class, oio.transdate,
+            oio.amount_bc, oio.amount_tc, oio.curr,
+            oi.account_id, c.accno, chart_description, legal_name, eca.id,
+            eca.entity_id, eca.discount, eca.meta_number;
 
 CREATE OR REPLACE FUNCTION payment_get_open_overpayment_entities(in_account_class int)
  returns SETOF payment_vc_info AS
@@ -1481,7 +1507,7 @@ returns SETOF payment_overpayments_available_amount AS
 $$
 BEGIN
 RETURN QUERY EXECUTE $sql$
-              SELECT chart_id, accno,   chart_description, available
+              SELECT account_id, accno, chart_description, available
               FROM overpayments
               WHERE payment_class  = $1
               AND entity_credit_id = $2
@@ -1515,19 +1541,14 @@ $$
 
 -- This should never hit an income statement-side account but I have handled it
 -- in case of configuration error. --CT
-SELECT o.payment_id, e.name, o.available, txn.transdate,
-       (select amount_bc * CASE WHEN c.category in ('A', 'E') THEN -1 ELSE 1 END
-          from acc_trans
-         where txn.id = trans_id
-               AND chart_id = o.chart_id ORDER BY entry_id ASC LIMIT 1) as amount
+SELECT o.overpayment_id, e.name, o.available, o.payment_date,
+       opening_balance_bc * CASE WHEN c.category in ('A', 'E') THEN -1 ELSE 1 END as amount
   FROM overpayments o
-  JOIN payment p ON o.payment_id = p.id
-  JOIN transactions txn ON txn.id = p.trans_id
-  JOIN account c ON c.id = o.chart_id
+  JOIN account c ON c.id = o.account_id
   JOIN entity_credit_account eca ON eca.id = o.entity_credit_id
   JOIN entity e ON eca.entity_id = e.id
- WHERE ($1 IS NULL OR $1 <= txn.transdate) AND
-       ($2 IS NULL OR $2 >= txn.transdate) AND
+ WHERE ($1 IS NULL OR $1 <= o.payment_date) AND
+       ($2 IS NULL OR $2 >= o.payment_date) AND
        ($3 IS NULL OR $3 = e.control_code) AND
        ($4 IS NULL OR $4 = eca.meta_number) AND
        ($5 IS NULL OR e.name @@ plainto_tsquery($5));

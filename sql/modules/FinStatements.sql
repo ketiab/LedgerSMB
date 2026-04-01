@@ -8,6 +8,47 @@ set client_min_messages = 'warning';
 
 BEGIN;
 
+
+DROP VIEW IF EXISTS cash_impact CASCADE;
+
+--###BUG??? The cash impact below doesn't take 'approved' into account?
+CREATE VIEW cash_impact AS
+  WITH ar_portions AS (
+    SELECT ar.trans_id, ac.transdate, ac.amount_bc/ar.amount_bc as portion,
+           (row_number() over (partition by ac.open_item_id order by entry_id)) = 1 as opening
+      FROM acc_trans ac
+             JOIN ar
+                 ON ac.open_item_id = ar.open_item_id
+  ),
+  ap_portions AS (
+    SELECT ap.trans_id, ac.transdate, -ac.amount_bc/ap.amount_bc as portion,
+           (row_number() over (partition by ac.open_item_id order by entry_id)) = 1 as opening
+      FROM acc_trans ac
+             JOIN ap
+                 ON ac.open_item_id = ap.open_item_id
+  )
+  SELECT id as trans_id, txn.transdate, 'gl' as rel, '1'::numeric
+           AS portion
+    FROM gl
+           JOIN transactions txn
+               USING (id)
+   UNION ALL
+  SELECT trans_id, transdate, 'ar' as rel, sum(portion) as portion
+    FROM ar_portions
+   WHERE NOT opening
+   GROUP by trans_id, transdate
+   UNION ALL
+  SELECT trans_id, transdate, 'ap' as rel, sum(portion) as portion
+    FROM ap_portions
+   WHERE NOT opening
+   GROUP by trans_id, transdate;
+
+COMMENT ON VIEW cash_impact IS
+$$ This view is used by cash basis reports to determine the fraction of a
+transaction to be counted.$$;
+
+
+
 -- This holds general PNL type report definitions.  The idea is to gather them
 -- here so that they share as many common types as possible.  Note that PNL
 -- reports do not return total and summary lines.  These must be done by the
@@ -100,8 +141,8 @@ SELECT ac.chart_id AS id, sum(ac.amount_bc) AS balance
      FROM acc_trans ac
      JOIN invoice i ON i.id = ac.invoice_id
      JOIN account_link l ON l.account_id = ac.chart_id
-     JOIN ar ON ar.id = ac.trans_id
-     JOIN transactions txn ON txn.id = ar.id
+     JOIN ar ON ar.open_item_id = ac.open_item_id
+     JOIN transactions txn ON txn.id = ar.trans_id
 LEFT JOIN (select array_agg(bu.path) as bu_ids, entry_id
              from business_unit_inv bui
              JOIN bu_tree bu ON bui.bu_id = bu.id
@@ -339,12 +380,12 @@ WITH RECURSIVE bu_tree (id, parent, path) AS (
    SELECT ac.chart_id AS id, sum(ac.amount_bc * ca.portion) AS balance
      FROM acc_trans ac
      JOIN transactions txn ON ac.trans_id = txn.id AND txn.approved
-     JOIN (SELECT id, sum(portion) as portion
+     JOIN (SELECT trans_id, sum(portion) as portion
              FROM cash_impact ca
             WHERE (in_from_date IS NULL OR ca.transdate >= in_from_date)
                   AND (in_to_date IS NULL OR ca.transdate <= in_to_date)
-           GROUP BY id
-          ) ca ON txn.id = ca.id
+           GROUP BY trans_id
+          ) ca ON txn.id = ca.trans_id
 LEFT JOIN (select array_agg(path) as bu_ids, entry_id
              FROM business_unit_ac buac
              JOIN bu_tree ON bu_tree.id = buac.bu_id
@@ -531,11 +572,21 @@ hdr_meta AS (
                                   WHERE aht.id = ANY(acc_meta.path)))
 ),
 acc_balance AS (
-WITH aa (id) AS
- ( SELECT id FROM ap JOIN transactions USING (id) WHERE approved is true AND entity_credit_account = in_id
-UNION ALL
-   SELECT id FROM ar JOIN transactions USING (id) WHERE approved is true AND entity_credit_account = in_id
-)
+  WITH aa (id) AS (
+    SELECT id
+      FROM ap
+           JOIN transactions
+                ON ap.trans_id = transactions.id
+     WHERE approved is true
+       AND entity_credit_account = in_id
+    UNION ALL
+    SELECT id
+      FROM ar
+           JOIN transactions
+                ON ar.trans_id = transactions.id
+     WHERE approved is true
+       AND entity_credit_account = in_id
+  )
 SELECT ac.chart_id AS id, sum(ac.amount_bc) AS balance
   FROM acc_trans ac
   JOIN aa ON ac.trans_id = aa.id
